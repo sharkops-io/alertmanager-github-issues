@@ -1,0 +1,31 @@
+# Minimal, deliberately. The point of committing this file is that CI and a
+# contributor's local `golangci-lint run` agree on a linter set at all — with
+# no config, that set is whatever the pinned image's defaults happen to be, and
+# it changes under you on every image bump. The CI workflow pins the image to a
+# matching v2 tag for the same reason.
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    # An unclosed response body leaks a connection per request, forever. This
+    # program hand-rolls its HTTP client, so nothing else catches that.
+    - bodyclose
+    # Every user-visible string here is documentation someone will act on.
+    - misspell
+  exclusions:
+    presets:
+      # `defer resp.Body.Close()` and friends. Without this, errcheck's v2
+      # defaults flag every deferred Close in the HTTP clients — noise that
+      # would train a reader to skim the whole report.
+      - std-error-handling
+    rules:
+      # An httptest handler that fails to write its response fails the test
+      # it serves, loudly, one line later.
+      - path: _test\.go
+        linters: [errcheck]
+
+formatters:
+  enable:
+    - gofmt
