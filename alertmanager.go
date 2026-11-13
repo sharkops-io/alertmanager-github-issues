@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -142,9 +144,11 @@ func body(m *Message, id string) string {
 	return b.String()
 }
 
-// The header (group labels, common annotations, URL) is at most three
-// fields of maxFieldLen plus a little text, so with the per-alert check above
-// the body stays under GitHub's limit; TestBodyIsCapped holds it to that.
+// With every fenced field bounded by fence(), the header (group labels,
+// common annotations, URL) is at most about 3 x maxFieldLen, and the
+// per-alert check above stops adding alerts at maxBodyLen, so the body stays
+// under GitHub's 65,536-character limit. TestBodyIsCapped and
+// TestHugeHeaderStillUnderLimit hold it to that.
 
 func kv(m map[string]string) string {
 	var b strings.Builder
@@ -155,8 +159,15 @@ func kv(m map[string]string) string {
 }
 
 // fence wraps s in a code fence longer than any backtick run inside it, so
-// the content cannot close the fence early and escape into Markdown.
+// the content cannot close the fence early and escape into Markdown. Both
+// the content and the fence are bounded: s is cut to maxFieldLen first, and
+// any backtick run longer than maxTicks is shortened to maxTicks, so a field
+// of nothing but backticks cannot make the fence itself enormous.
 func fence(s string) string {
+	if len(s) > maxFieldLen {
+		s = strings.ToValidUTF8(s[:maxFieldLen], "") + "\n[truncated]\n"
+	}
+	s = longTicks.ReplaceAllString(s, strings.Repeat("`", maxTicks))
 	longest, run := 0, 0
 	for _, r := range s {
 		if r == '`' {
@@ -168,15 +179,16 @@ func fence(s string) string {
 			run = 0
 		}
 	}
-	if len(s) > maxFieldLen {
-		s = strings.ToValidUTF8(s[:maxFieldLen], "") + "\n[truncated]\n"
-	}
 	f := strings.Repeat("`", max(3, longest+1))
 	if !strings.HasSuffix(s, "\n") {
 		s += "\n"
 	}
 	return f + "text\n" + s + f + "\n"
 }
+
+const maxTicks = 10
+
+var longTicks = regexp.MustCompile("`{" + strconv.Itoa(maxTicks+1) + ",}")
 
 func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))
