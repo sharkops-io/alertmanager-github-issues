@@ -36,8 +36,13 @@ type Alert struct {
 }
 
 // maxBodyLen stays under GitHub's 65536-character limit on an issue body,
-// with room for the truncation note.
-const maxBodyLen = 60000
+// with room for the truncation note. maxFieldLen caps any one fenced value,
+// so a single huge label or annotation cannot use up the whole body before
+// the first alert, or push it past the limit so the issue is never created.
+const (
+	maxBodyLen  = 60000
+	maxFieldLen = 8000
+)
 
 // groupID identifies an alert group across notifications. Alertmanager's
 // groupKey is stable for a group on one route, so its hash is what an open
@@ -137,6 +142,10 @@ func body(m *Message, id string) string {
 	return b.String()
 }
 
+// The header (group labels, common annotations, URL) is at most three
+// fields of maxFieldLen plus a little text, so with the per-alert check above
+// the body stays under GitHub's limit; TestBodyIsCapped holds it to that.
+
 func kv(m map[string]string) string {
 	var b strings.Builder
 	for _, k := range sortedKeys(m) {
@@ -158,6 +167,9 @@ func fence(s string) string {
 		} else {
 			run = 0
 		}
+	}
+	if len(s) > maxFieldLen {
+		s = strings.ToValidUTF8(s[:maxFieldLen], "") + "\n[truncated]\n"
 	}
 	f := strings.Repeat("`", max(3, longest+1))
 	if !strings.HasSuffix(s, "\n") {
