@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,8 +38,13 @@ type Alert struct {
 }
 
 // maxBodyLen stays under GitHub's 65536-character limit on an issue body,
-// with room for the truncation note.
-const maxBodyLen = 60000
+// with room for the truncation note. maxFieldLen caps any one fenced value,
+// so a single huge label or annotation cannot use up the whole body before
+// the first alert, or push it past the limit so the issue is never created.
+const (
+	maxBodyLen  = 60000
+	maxFieldLen = 8000
+)
 
 // groupID identifies an alert group across notifications. Alertmanager's
 // groupKey is stable for a group on one route, so its hash is what an open
@@ -137,6 +144,12 @@ func body(m *Message, id string) string {
 	return b.String()
 }
 
+// With every fenced field bounded by fence(), the header (group labels,
+// common annotations, URL) is at most about 3 x maxFieldLen, and the
+// per-alert check above stops adding alerts at maxBodyLen, so the body stays
+// under GitHub's 65,536-character limit. TestBodyIsCapped and
+// TestHugeHeaderStillUnderLimit hold it to that.
+
 func kv(m map[string]string) string {
 	var b strings.Builder
 	for _, k := range sortedKeys(m) {
@@ -146,8 +159,15 @@ func kv(m map[string]string) string {
 }
 
 // fence wraps s in a code fence longer than any backtick run inside it, so
-// the content cannot close the fence early and escape into Markdown.
+// the content cannot close the fence early and escape into Markdown. Both
+// the content and the fence are bounded: s is cut to maxFieldLen first, and
+// any backtick run longer than maxTicks is shortened to maxTicks, so a field
+// of nothing but backticks cannot make the fence itself enormous.
 func fence(s string) string {
+	if len(s) > maxFieldLen {
+		s = strings.ToValidUTF8(s[:maxFieldLen], "") + "\n[truncated]\n"
+	}
+	s = longTicks.ReplaceAllString(s, strings.Repeat("`", maxTicks))
 	longest, run := 0, 0
 	for _, r := range s {
 		if r == '`' {
@@ -165,6 +185,10 @@ func fence(s string) string {
 	}
 	return f + "text\n" + s + f + "\n"
 }
+
+const maxTicks = 10
+
+var longTicks = regexp.MustCompile("`{" + strconv.Itoa(maxTicks+1) + ",}")
 
 func sortedKeys(m map[string]string) []string {
 	keys := make([]string, 0, len(m))

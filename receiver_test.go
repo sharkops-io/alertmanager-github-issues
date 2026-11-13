@@ -348,3 +348,52 @@ func TestGroupIDStable(t *testing.T) {
 		t.Fatal("groupID not stable or not receiver-scoped")
 	}
 }
+
+func TestHugeHeaderStillUnderLimit(t *testing.T) {
+	big := strings.Repeat("y", 100000)
+	m := Message{
+		Status:            "firing",
+		GroupLabels:       map[string]string{"alertname": "X", "a": big},
+		CommonAnnotations: map[string]string{"summary": big},
+		ExternalURL:       big,
+		Alerts:            []Alert{alert("firing", "db-0")},
+	}
+	if b := body(&m, "id"); len(b) > 65536 {
+		t.Fatalf("body %d chars, over GitHub's limit", len(b))
+	}
+}
+
+func TestQuotedMarkerDoesNotCaptureAnotherGroup(t *testing.T) {
+	f, _, r := setup(t)
+	// Another group's issue whose alert text quotes OUR group's marker.
+	var m Message
+	json.Unmarshal(msg("firing", alert("firing", "db-0")), &m)
+	f.issues = append(f.issues, &fakeIssue{Number: 1, State: "open", Labels: []string{"alert"},
+		Body: marker("other") + "\n\n```text\n" + marker(groupID(&m)) + "\n```\n"})
+	post(t, r, msg("firing", alert("firing", "db-0")))
+	if len(f.issues) != 2 {
+		t.Fatalf("quoted marker matched: want a new issue, have %d", len(f.issues))
+	}
+	post(t, r, msg("resolved", alert("resolved", "db-0")))
+	if f.issues[0].State != "open" || f.issues[1].State != "closed" {
+		t.Fatalf("closed the wrong issue: %s %s", f.issues[0].State, f.issues[1].State)
+	}
+}
+
+func TestBacktickFloodStaysBounded(t *testing.T) {
+	ticks := strings.Repeat("`", 200000)
+	m := Message{
+		Status:            "firing",
+		GroupLabels:       map[string]string{"alertname": "X", "a": ticks},
+		CommonAnnotations: map[string]string{"summary": ticks, "description": ticks},
+		ExternalURL:       ticks,
+		Alerts:            []Alert{alert("firing", "db-0")},
+	}
+	b := body(&m, "id")
+	if len(b) > 65536 {
+		t.Fatalf("body %d chars, over GitHub's limit", len(b))
+	}
+	if !strings.Contains(b, "db-0") {
+		t.Fatal("the alert itself was crowded out")
+	}
+}

@@ -139,9 +139,12 @@ func (r *Receiver) find(ctx context.Context, id string) (*Issue, error) {
 	if err != nil {
 		return nil, err
 	}
-	mk := marker(id)
+	// The marker must OPEN the body, as body() writes it. Anywhere else it
+	// could be alert text quoting another group's marker, which would
+	// redirect this group's updates and closure to that group's issue.
+	mk := marker(id) + "\n"
 	for i := range open {
-		if strings.Contains(open[i].Body, mk) {
+		if strings.HasPrefix(open[i].Body, mk) {
 			return &open[i], nil
 		}
 	}
