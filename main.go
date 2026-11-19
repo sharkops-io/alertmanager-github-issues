@@ -41,6 +41,7 @@ func run(args []string) error {
 		apiURL      = fs.String("api-url", env("api-url", "https://api.github.com"), "GitHub API base URL")
 		label       = fs.String("label", env("label", "alert"), "label put on every issue and used to find open ones")
 		labelKeys   = fs.String("label-from", env("label-from", "severity"), "comma-separated alert label names copied onto the issue as name:value labels")
+		assignees   = fs.String("assignees", env("assignees", ""), "comma-separated GitHub logins assigned to each new issue")
 		appID       = fs.String("app-id", env("app-id", ""), "GitHub App ID or client ID")
 		install     = fs.String("installation-id", env("installation-id", ""), "GitHub App installation ID")
 		keyFile     = fs.String("private-key-file", env("private-key-file", ""), "GitHub App private key (PEM)")
@@ -91,6 +92,11 @@ func run(args []string) error {
 	for _, k := range strings.Split(*labelKeys, ",") {
 		if k = strings.TrimSpace(k); k != "" {
 			r.labelFromKeys = append(r.labelFromKeys, k)
+		}
+	}
+	for _, a := range strings.Split(*assignees, ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			r.assignees = append(r.assignees, a)
 		}
 	}
 	if *bearerFile != "" {

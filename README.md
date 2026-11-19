@@ -73,6 +73,7 @@ upper case with dashes as underscores. A flag on the command line wins.
 | `-listen` | `:8080` | listen address |
 | `-label` | `alert` | label on every issue; open issues are found by it |
 | `-label-from` | `severity` | comma-separated alert label names copied onto the issue |
+| `-assignees` | | comma-separated GitHub logins assigned to each new issue, so GitHub notifies them; each needs access to the repository |
 | `-bearer-token-file` | | if set, `POST /webhook` requires `Authorization: Bearer <file contents>` |
 | `-api-url` | `https://api.github.com` | for GitHub Enterprise Server, `https://HOST/api/v3` |
 | `-github-timeout` | `20s` | per GitHub API request |
