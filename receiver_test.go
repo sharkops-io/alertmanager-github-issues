@@ -28,12 +28,15 @@ type fakeGitHub struct {
 }
 
 type fakeIssue struct {
-	Number int      `json:"number"`
-	Title  string   `json:"title"`
-	Body   string   `json:"body"`
-	State  string   `json:"state"`
-	Reason string   `json:"state_reason"`
-	Labels []string `json:"-"`
+	Number    int      `json:"number"`
+	Title     string   `json:"title"`
+	Body      string   `json:"body"`
+	State     string   `json:"state"`
+	Reason    string   `json:"state_reason"`
+	Labels    []string `json:"-"`
+	Assignees []string `json:"-"`
+	// HasAssignees records whether the create request carried the key at all.
+	HasAssignees bool `json:"-"`
 }
 
 func newFake() *fakeGitHub {
@@ -85,12 +88,16 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(open[start:end])
 	case len(parts) == 4 && r.Method == http.MethodPost:
 		var in struct {
-			Title  string   `json:"title"`
-			Body   string   `json:"body"`
-			Labels []string `json:"labels"`
+			Title     string    `json:"title"`
+			Body      string    `json:"body"`
+			Labels    []string  `json:"labels"`
+			Assignees *[]string `json:"assignees"`
 		}
 		json.NewDecoder(r.Body).Decode(&in)
 		is := &fakeIssue{Number: len(f.issues) + 1, Title: in.Title, Body: in.Body, State: "open", Labels: in.Labels}
+		if in.Assignees != nil {
+			is.Assignees, is.HasAssignees = *in.Assignees, true
+		}
 		f.issues = append(f.issues, is)
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(is)
@@ -395,5 +402,20 @@ func TestBacktickFloodStaysBounded(t *testing.T) {
 	}
 	if !strings.Contains(b, "db-0") {
 		t.Fatal("the alert itself was crowded out")
+	}
+}
+
+func TestAssigneesOnNewIssue(t *testing.T) {
+	f, _, r := setup(t)
+	post(t, r, msg("firing", alert("firing", "db-0")))
+	if f.issues[0].HasAssignees {
+		t.Errorf("no -assignees, but the create sent assignees %v", f.issues[0].Assignees)
+	}
+
+	f, _, r = setup(t)
+	r.assignees = []string{"octocat", "hubot"}
+	post(t, r, msg("firing", alert("firing", "db-0")))
+	if got := f.issues[0].Assignees; len(got) != 2 || got[0] != "octocat" || got[1] != "hubot" {
+		t.Errorf("assignees = %v", got)
 	}
 }

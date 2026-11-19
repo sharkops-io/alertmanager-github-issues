@@ -17,7 +17,7 @@ import (
 // Issues is what the receiver needs from GitHub.
 type Issues interface {
 	OpenIssues(ctx context.Context, label string) ([]Issue, error)
-	CreateIssue(ctx context.Context, title, body string, labels []string) (int, error)
+	CreateIssue(ctx context.Context, title, body string, labels, assignees []string) (int, error)
 	UpdateIssue(ctx context.Context, number int, fields map[string]any) error
 	Comment(ctx context.Context, number int, text string) error
 }
@@ -29,6 +29,7 @@ type Receiver struct {
 	gh            Issues
 	label         string
 	labelFromKeys []string // alert label names copied onto the issue as "name:value" labels
+	assignees     []string // GitHub logins assigned to each new issue, so they are notified
 	bearer        func() (string, error)
 	log           *slog.Logger
 	now           func() time.Time
@@ -97,7 +98,7 @@ func (r *Receiver) Handle(ctx context.Context, m *Message) error {
 	case "firing":
 		b := body(m, id)
 		if existing == nil {
-			n, err := r.gh.CreateIssue(ctx, title(m), b, r.labels(m))
+			n, err := r.gh.CreateIssue(ctx, title(m), b, r.labels(m), r.assignees)
 			if err != nil {
 				return err
 			}

@@ -177,15 +177,18 @@ func (g *GitHub) OpenIssues(ctx context.Context, label string) ([]Issue, error) 
 	return all, nil
 }
 
-func (g *GitHub) CreateIssue(ctx context.Context, title, body string, labels []string) (int, error) {
+func (g *GitHub) CreateIssue(ctx context.Context, title, body string, labels, assignees []string) (int, error) {
 	tok, err := g.tokens.Token(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var out Issue
 	u := fmt.Sprintf("%s/repos/%s/%s/issues", g.apiURL, g.owner, g.repo)
-	_, err = doJSON(ctx, g.client, http.MethodPost, u, "token "+tok,
-		map[string]any{"title": title, "body": body, "labels": labels}, &out)
+	in := map[string]any{"title": title, "body": body, "labels": labels}
+	if len(assignees) > 0 {
+		in["assignees"] = assignees
+	}
+	_, err = doJSON(ctx, g.client, http.MethodPost, u, "token "+tok, in, &out)
 	return out.Number, err
 }
 
